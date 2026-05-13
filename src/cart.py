@@ -1,17 +1,18 @@
 from typing import List
 from src.models import CartItem, Product
 
+
 class ShoppingCart:
     """
     Representa um carrinho de compras.
     """
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Inicializa um carrinho de compras com uma lista vazia de itens.
         """
         self.items: List[CartItem] = []
 
-    def add_item(self, product: Product, quantity: int):
+    def add_item(self, product: Product, quantity: int) -> None:
         """
         Adiciona um produto ao carrinho. Se o produto já existir,
         a quantidade é somada à existente.
@@ -27,7 +28,7 @@ class ShoppingCart:
 
         self.items.append(CartItem(product=product, quantity=quantity))
 
-    def remove_item(self, product_id: int):
+    def remove_item(self, product_id: int) -> None:
         """
         Remove um item do carrinho pelo ID do produto.
 

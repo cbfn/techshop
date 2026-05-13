@@ -1,96 +1,108 @@
-# Este arquivo contém código propositalmente ruim para fins educacionais em uma aula de refatoração.
-# MÁS PRÁTICAS APLICADAS:
-# 1. Função única com múltiplas responsabilidades (validação, cálculo, pagamento).
-# 2. Nomes de variáveis ruins e não descritivos (x1, val, p, temp, res).
-# 3. Falta de tipagem de dados (sem type hints).
-# 4. Manipulação de dicionários brutos em vez de modelos de dados (sem Pydantic).
-# 5. Aninhamento profundo de condicionais (código espaguete).
-# 6. "Números mágicos" espalhados pelo código (valores fixos sem explicação).
-# 7. Mock de chamadas externas e validações com prints.
-# 8. Falta de tratamento de erros robusto.
-
-# Simulação de uma biblioteca de requisições HTTP para não adicionar dependências reais.
-class FakeResponse:
-    def __init__(self, status_code, json_data):
-        self.status_code = status_code
-        self._json_data = json_data
-    def json(self):
-        return self._json_data
-
-def fake_post(url, json):
-    """Simula uma chamada POST para uma API de pagamento."""
-    print(f"--- Simulando POST para API de pagamento: {url} ---")
-    if json['valor_total'] > 0 and json['valor_total'] < 9999:
-        print("--- Pagamento APROVADO (simulado) ---")
-        return FakeResponse(200, {"status": "pagamento_aprovado", "transacao_id": "xyz123abc"})
-    else:
-        print("--- Pagamento RECUSADO (simulado) ---")
-        return FakeResponse(400, {"status": "pagamento_recusado", "motivo": "valor_invalido"})
+from typing import List
+from src.models import CartItem, CheckoutResult, PaymentRequest, PaymentResponse, User
 
 
-def processar_tudo(cart_data, u_data):
-    """
-    Função gigante e mal escrita para processar um checkout completo.
-    Recebe dados do carrinho e do usuário em formato de dicionário.
-    """
-    print("Iniciando processamento de checkout...")
-    val = 0
-    
-    if cart_data and 'items' in cart_data:
-        # Validação de estoque e cálculo de valor
-        for p in cart_data['items']:
-            print(f"Verificando estoque para o produto ID: {p['id']}...")
-            # Estoque mockado
-            estoque_disponivel = 10
-            if p['qtd'] <= estoque_disponivel:
-                print(f"Estoque OK para {p['qtd']} unidades do produto {p['id']}.")
-                x1 = p['preco'] * p['qtd']
-                val = val + x1
-            else:
-                print(f"ERRO: Estoque insuficiente para o produto {p['id']}.")
-                return "Erro de estoque"
+class FakePaymentAPI:
+    """Simula uma API de pagamentos externa."""
 
-        # Cálculo de frete e descontos
-        if val > 0:
-            print(f"Valor parcial: {val}")
-            # Frete fixo
-            frete = 15.50
-            val = val + frete
-            print(f"Valor com frete: {val}")
+    def process_payment(self, request: PaymentRequest) -> PaymentResponse:
+        """
+        Simula a chamada a um gateway de pagamento de forma protegida, sem dados sensiveis reais.
 
-            # Lógica de desconto aninhada
-            if val > 200:
-                if u_data['vip']:
-                    print("Aplicando desconto VIP de 15%")
-                    val = val * 0.85
-                else:
-                    print("Aplicando desconto padrão de 5%")
-                    val = val * 0.95
-            
-            # Simulação de chamada para API de pagamento
-            print("Preparando para processar pagamento...")
-            dados_pagamento = {
-                "id_usuario": u_data['id'],
-                "valor_total": round(val, 2),
-                "info_cartao": "XXXX-XXXX-XXXX-1234" # Dados sensíveis hardcoded
-            }
-            
-            res = fake_post("https://api.pagamento.exemplo/processar", json=dados_pagamento)
-            
-            if res.status_code == 200:
-                temp = res.json()
-                if temp['status'] == 'pagamento_aprovado':
-                    print(f"Checkout finalizado com sucesso! ID da transação: {temp['transacao_id']}")
-                    return {"sucesso": True, "transacao": temp['transacao_id']}
-                else:
-                    print("Ocorreu um problema com o pagamento.")
-                    return {"sucesso": False, "erro": "problema_na_api_de_pagamento"}
-            else:
-                print("API de pagamento retornou um erro.")
-                return {"sucesso": False, "erro": "api_pagamento_offline"}
-        else:
-            print("Carrinho vazio, nenhum valor a processar.")
-            return "Carrinho vazio"
-    else:
-        print("Dados do carrinho estão vazios ou em formato inválido.")
-        return "Dados inválidos"
+        Args:
+            request (PaymentRequest): Os dados para processamento do pagamento.
+
+        Returns:
+            PaymentResponse: A resposta do provedor de pagamentos.
+        """
+        if 0 < request.total_amount < 9999:
+            return PaymentResponse(status="pagamento_aprovado", transaction_id="xyz123abc")
+        return PaymentResponse(status="pagamento_recusado", reason="valor_invalido")
+
+
+class CheckoutService:
+    """Servico responsavel por orquestrar o processo de checkout respeitando SOLID."""
+
+    def __init__(self, payment_api: FakePaymentAPI) -> None:
+        """
+        Inicializa o servico de checkout.
+
+        Args:
+            payment_api (FakePaymentAPI): A API de pagamentos injetada (Inversion of Control).
+        """
+        self.payment_api = payment_api
+        self.shipping_cost = 15.50
+
+    def check_stock(self, items: List[CartItem]) -> bool:
+        """
+        Verifica a disponibilidade de estoque para todos os itens do carrinho.
+
+        Args:
+            items (List[CartItem]): Lista de itens do carrinho.
+
+        Returns:
+            bool: Verdadeiro se ha estoque para todos, falso caso contrario.
+        """
+        mock_stock = 10
+        for item in items:
+            if item.quantity > mock_stock:
+                return False
+        return True
+
+    def calculate_total(self, items: List[CartItem], user: User) -> float:
+        """
+        Calcula o valor total do carrinho, incluindo frete e descontos.
+
+        Args:
+            items (List[CartItem]): Itens que compoem o carrinho.
+            user (User): O usuario que esta realizando o pedido.
+
+        Returns:
+            float: O valor final do pedido.
+        """
+        subtotal = sum(item.product.price * item.quantity for item in items)
+        if subtotal == 0:
+            return 0.0
+
+        total_with_shipping = subtotal + self.shipping_cost
+        
+        if total_with_shipping > 200:
+            if user.is_vip:
+                return total_with_shipping * 0.85
+            return total_with_shipping * 0.95
+
+        return total_with_shipping
+
+    def process_checkout(self, items: List[CartItem], user: User, payment_token: str) -> CheckoutResult:
+        """
+        Processa o checkout validando o carrinho, calculando o valor e processando o pagamento.
+
+        Args:
+            items (List[CartItem]): Os itens presentes no carrinho do usuario.
+            user (User): O usuario logado realizando a compra.
+            payment_token (str): O token de pagamento (seguro) fornecido pelo gateway no frontend.
+
+        Returns:
+            CheckoutResult: Objeto indicando sucesso ou fracasso do checkout, e ID da transacao caso sucesso.
+        """
+        if not items:
+            return CheckoutResult(success=False, error="Carrinho vazio")
+
+        if not self.check_stock(items):
+            return CheckoutResult(success=False, error="Erro de estoque")
+
+        total = self.calculate_total(items, user)
+        if total == 0:
+            return CheckoutResult(success=False, error="Valor invalido")
+
+        payment_request = PaymentRequest(
+            user_id=user.id,
+            total_amount=round(total, 2),
+            payment_token=payment_token
+        )
+
+        response = self.payment_api.process_payment(payment_request)
+        if response.status == "pagamento_aprovado":
+            return CheckoutResult(success=True, transaction_id=response.transaction_id)
+        
+        return CheckoutResult(success=False, error="problema_na_api_de_pagamento")
